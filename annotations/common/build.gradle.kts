@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "$projectGroup.rebo.annotations"
-version = "$projectVersion.${kotlinVersion.replace('.', ' ')}-SNAPSHOT"
+version = "$projectVersion.${kotlinVersion.replace(".", "")}-SNAPSHOT"
 
 kotlin {
 

@@ -42,7 +42,12 @@ class KClassDeclaration(
         name.camelSnakeSplit.joinToString("") { it.plural }
     }
 
+    @Deprecated("Replaced with daoFqName", ReplaceWith("daoFqName"))
     val daoQualifiedName by lazy {
+        "$generatedPackageName.$daoName"
+    }
+
+    val daoFqName by lazy {
         "$generatedPackageName.$daoName"
     }
 

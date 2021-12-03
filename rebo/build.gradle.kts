@@ -13,7 +13,7 @@ plugins {
 }
 
 group = projectGroup
-version = "$projectVersion.${kotlinVersion.replace('.', ' ')}-SNAPSHOT"
+version = "$projectVersion.${kotlinVersion.replace(".", "")}-SNAPSHOT"
 
 
 kotlin {

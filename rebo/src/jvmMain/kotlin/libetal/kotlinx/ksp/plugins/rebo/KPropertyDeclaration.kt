@@ -222,7 +222,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
     }
 
     val daoFqName by lazy {
-        daoClass?.daoQualifiedName
+        daoClass?.daoFqName
     }
 
     val primitiveTypeSimpleString by lazy {

@@ -19,7 +19,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
     }
 
     private val daoFqName by lazy {
-        declaration.daoQualifiedName
+        declaration.daoFqName
     }
 
     private val daoColumns by lazy {
@@ -33,19 +33,23 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
                     val function = if (isNullable) "optionalReferencedOn" else "referencedOn"
 
                     daoClass?.let { daoClass ->
-                        "${daoClass.daoQualifiedName} $function $tableQualifiedName.$propertyName"
+                        "${daoClass.daoFqName} $function $tableQualifiedName.$propertyName"
                     } ?: throw RuntimeException("Can't find daoClass for $fqName : $qualifiedReturnType")
                 }
 
                 var variableType = if (isForeign) {
-                    ": $daoFqName"
+                    var result = ": $daoFqName"
+                    if (isNullable) result += "?"
+                    result
                 } else if (isPrimary) {
                     ""
                 } else {
-                    ""
+                    daoFqName?.let {
+                        ": $it"
+                    } ?: ""
                 }
 
-                if (isNullable) variableType += "?"
+
 
                 if (!(isPrimary && propertyName == "id")) {
                     code += """|
@@ -113,7 +117,8 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
                         indent += "    "
 
                         if (inConstructor) {
-                            constructorCode += """$propertyName = $rightHandExpression"""
+                            constructorCode += """|// in constructor
+                                |$propertyName = $rightHandExpression""".trimMargin()
                         } else {
                             nonConstructorCode += """this.$propertyName = $rightHandExpression"""
                         }
@@ -290,7 +295,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
                 """.trimMargin()
         } else {
             """|
-                |$spacing$propertyName = $argumentName""".trimMargin()
+               |$spacing$propertyName = $argumentName""".trimMargin()
 
         }
 
