@@ -9,9 +9,15 @@ import libetal.rebo.annotations.exposed.properties.PrimaryKey
 @Entity
 data class AccountGroup(
     @Column
+    @ForeignKey(safeInsert = true)
     val group: Group,
 
     @Column
-    @PrimaryKey
+    @ForeignKey(safeInsert = true)
     val account: Account
-)
+
+) {
+    @Column
+    @PrimaryKey
+    var id: Int = 0
+}

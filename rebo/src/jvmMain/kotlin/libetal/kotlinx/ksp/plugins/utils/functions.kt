@@ -3,6 +3,8 @@ package libetal.kotlinx.ksp.plugins.utils
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSValueArgument
+import com.google.devtools.ksp.symbol.KSValueParameter
+import libetal.kotlinx.ksp.plugins.rebo.KPropertyDeclaration
 import java.io.OutputStreamWriter
 
 fun KSAnnotated.getAnnotation(annotation: String): KSAnnotation? =
@@ -16,6 +18,11 @@ fun KSAnnotated.useFirst(vararg consumers: Pair<String, (KSAnnotation) -> Unit>)
     }
 }
 
+operator fun List<KSValueParameter>.get(kPropertyDeclaration: KPropertyDeclaration): KSValueParameter? =
+    firstOrNull { ksValueParameter ->
+        ksValueParameter.name?.asString() == kPropertyDeclaration.propertyName
+                && ksValueParameter.type.resolve().declaration.qualifiedName?.asString() == kPropertyDeclaration.qualifiedReturnType
+    }
 
 operator fun Sequence<KSAnnotation>.get(annotationName: String) =
     firstOrNull { it.annotationType.resolve().declaration.qualifiedName?.asString() == annotationName }

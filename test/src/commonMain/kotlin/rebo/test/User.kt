@@ -13,9 +13,12 @@ data class User(
     val name: String,
 
     @Column
-    @PrimaryKey
     @Unique("name")
     @ForeignKey(onUpdate= ReferenceOption.NO_ACTION)
-    val account: Account
-)
+    var account: Account
+){
+    @Column
+    @PrimaryKey
+    var id:Int  = 0
+}
 

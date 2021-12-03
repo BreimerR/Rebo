@@ -1,12 +1,12 @@
 package libetal.kotlinx.ksp.plugins.rebo
 
+import com.google.devtools.ksp.getConstructors
 import com.google.devtools.ksp.symbol.KSAnnotation
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSPropertyDeclaration
 import com.libetal.lazy.contexed.contexedLazy
 import com.libetal.lazy.mutable.mutableLazy
 import kotlinx.strings.isBlank
-
 import libetal.kotlinx.ksp.plugins.rebo.Annotations.Column
 import libetal.kotlinx.ksp.plugins.rebo.Annotations.ForeignKey
 import libetal.kotlinx.ksp.plugins.rebo.Annotations.PrimaryKey
@@ -134,7 +134,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
         simpleName.asString()
     }
 
-    private var columnName by mutableLazy {
+    var columnName by mutableLazy {
         columnAnnotation.arguments["name"]?.value?.let {
             it.toString().ifBlank { null }
         } ?: propertyName
@@ -159,7 +159,17 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
         checkNotNull(resolvedTypeDeclarationQualifiedName) {
             "Can't resolve return type of property ${qualifiedName?.asString()}"
         }
+    }
 
+    val immediateReferenced by lazy {
+        if (isPrimitive)
+            null
+        else EntityProcessor.getDeclaration(qualifiedReturnType) as? KClassDeclaration
+            ?: KClassDeclaration(resolvedType.declaration as KSClassDeclaration)
+    }
+
+    val pkgName by lazy {
+        declaration.packageName.asString()
     }
 
     val fqName by lazy {
@@ -169,6 +179,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
     private val resolvedType by lazy {
         type.resolve()
     }
+
 
     val isNullable by lazy {
         resolvedType.isMarkedNullable
@@ -210,6 +221,10 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
         } else null
     }
 
+    val daoFqName by lazy {
+        daoClass?.daoQualifiedName
+    }
+
     val primitiveTypeSimpleString by lazy {
         if (isPrimitive)
             returnTypeSimpleName
@@ -221,6 +236,25 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
         }
 
         "kotlin.Int"
+    }
+
+    /**
+     * This implementation has a few flaws if the constructor
+     * parameters are differently named
+     * */
+    val KClassDeclaration.inConstructor by contexedLazy {
+        var result = false
+
+        for (constructor in getConstructors()) {
+            val parameter = constructor.parameters[this@KPropertyDeclaration]
+
+            if (parameter != null) {
+                result = true
+                break
+            }
+        }
+
+        result
     }
 
     val entityKeyTypeString by lazy {
@@ -306,31 +340,72 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
         if (isUnique)
             rightHandExpression += ".uniqueIndex()"
 
-        if (isPrimary)
+        if (isPrimary && propertyName == "id")
             rightHandExpression += ".entityId()"
 
-        if(isNullable)
-            rightHandExpression += ".nullable()"
+        if (isNullable)
+            if (isPrimary) {
+                Logger.error("Nullable Property($fqName) Can't be marked as ${Annotations.PrimaryKey} ")
+            } else rightHandExpression += ".nullable()"
 
 
         rightHandExpression
     }
 
-    fun tablePropertyString(indent: String = ""): String {
-        var code = """|
-            |$indent${if (tableOverride) "override " else ""}val $propertyName = $tablePropertyAssignmentExpression""".trimMargin()
-
-        if (isPrimary)
-            code += """|
-                |${indent}override val primaryKey: org.jetbrains.exposed.sql.Table.PrimaryKey = PrimaryKey(${propertyName})
-                |
-            """.trimMargin()
-
-        return code
+    private val columnExplicitTypeParameter by lazy {
+        if (isForeign) {
+            primitiveTypeSimpleString
+        } else {
+            qualifiedReturnType
+        }
     }
 
-    override fun toString(): String {
-        TODO("Not yet implemented")
+    private val columnExplicitType by lazy {
+        var result = "Column<"
+
+        val closer = when {
+            isPrimary && propertyName != "id" -> ""
+            isPrimary || isForeign -> {
+                result += "org.jetbrains.exposed.dao.id.EntityID<"
+                ">"
+            }
+            else -> ""
+        }
+
+        result += columnExplicitTypeParameter
+
+        result += closer
+
+        if (isNullable)
+            if (isPrimary) {
+                Logger.error("Nullable Property($fqName) Can't be marked as $PrimaryKey ")
+            } else result += "?"
+
+        result += ">"
+
+        result
+    }
+
+    fun tablePropertyString(indent: String = ""): String {
+
+        var code = """|
+            |$indent${if (tableOverride) "override " else ""}var $propertyName: $columnExplicitType = $tablePropertyAssignmentExpression""".trimMargin()
+
+        if (isPrimary)
+            code += if (propertyName == "id") {
+                """|
+                        |${indent}override val primaryKey: org.jetbrains.exposed.sql.Table.PrimaryKey = PrimaryKey(${propertyName})
+                        |
+                    """.trimMargin()
+            } else {
+                """|
+                        |${indent}override val id: Column<org.jetbrains.exposed.dao.id.EntityID<$columnExplicitTypeParameter>> = $propertyName.entityId()
+                        |${indent}override val primaryKey: org.jetbrains.exposed.sql.Table.PrimaryKey = PrimaryKey(id)
+                        |
+                    """.trimMargin()
+            }
+
+        return code
     }
 
 

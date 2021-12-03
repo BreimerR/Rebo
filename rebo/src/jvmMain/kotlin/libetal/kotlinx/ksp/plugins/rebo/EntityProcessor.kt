@@ -32,7 +32,7 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
                     DaoConverter(this)
                 ).write()
 
-                if (hasPrimaryKey && primaryColumn?.propertyName == "id") File(
+                if (hasPrimaryKey) File(
                     tableClassName,
                     codeGenerator,
                     dependencies,
