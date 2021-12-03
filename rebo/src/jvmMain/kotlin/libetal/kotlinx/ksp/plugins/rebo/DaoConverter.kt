@@ -268,9 +268,8 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
         }
     }
 
-    private val KPropertyDeclaration.updateByPrimaryKeyString
-    get(): String {
-        val spacing = "$indent                "
+    private fun KPropertyDeclaration.updateByPrimaryKeyString(primaryColumnName: String?): String {
+        val spacing = "$indent            "
         val nullableName = "$argName${propertyName.ucFirst}"
         val argumentName = "$argName.$propertyName"
 
@@ -283,11 +282,11 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
             if (isNullable) {
                 """|
                     |$spacing$argumentName?.let { $nullableName ->
-                    |$spacing    $propertyName = $daoFqName.update($nullableName)
+                    |$spacing    $propertyName = $daoFqName.update($argumentName.$primaryColumnName, $nullableName)
                     |$spacing}
                 """.trimMargin()
             } else """|
-                    |$spacing$propertyName = $daoFqName.update($argumentName)
+                    |$spacing$propertyName = $daoFqName.update($argumentName.$primaryColumnName, $argumentName)
                 """.trimMargin()
         } else {
             """|
@@ -332,7 +331,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
 
     private val KClassDeclaration.updateByPrimaryKeyTransactionBody
         get(): String = columns.joinToString("") {
-            it.updateByPrimaryKeyString
+            it.updateByPrimaryKeyString(primaryColumn?.primaryKeyPrimitivePath)
         }
 
     private val KClassDeclaration.updateMethodTransactionBody
@@ -367,7 +366,6 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
     }
 
 
-
     /**
      * fun update(primaryKeyPropertyName: PrimaryKeyType, entityClassSimpleNameToCamelCase: EntityClassFullyQualifiedName): EntityClassFullyQualifiedName = transaction {
      *     findById(int)?.apply {
@@ -378,11 +376,14 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
      * */
     private val updateByIdMethod by lazy {
         val primaryKeyName = primaryColumn?.propertyName
+        val primaryKeyFqName = primaryColumn?.fqName
         val primaryColumnType = primaryColumn?.qualifiedReturnType
+        val fqConcatProperty = "{$argName.${primaryColumn?.primaryKeyPrimitivePath}}"
         """|
-            |$indent    fun update($primaryKeyName: ${primaryColumnType},$argName: $fqName){
-            |$indent        findById(${primaryColumn?.primaryKeyPrimitivePath})?.apply{${declaration.updateByPrimaryKeyTransactionBody}
+            |$indent    fun update($primaryKeyName: ${primaryColumnType}, $argName: $fqName): $daoFqName = transaction {
+            |$indent        findById(${primaryColumn?.primaryKeyPrimitivePath})?.apply {${declaration.updateByPrimaryKeyTransactionBody}
             |$indent        }
+            |$indent            ?: throw java.sql.BatchUpdateException(Exception("Can't find row to update with primaryKey $primaryKeyFqName($$fqConcatProperty)"))
             |$indent    }
         """.trimMargin()
     }
