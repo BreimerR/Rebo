@@ -5,6 +5,9 @@ import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
+import libetal.kotlinx.ksp.plugins.rebo.visitors.DatabaseCreatorsConverter
+import libetal.kotlinx.ksp.plugins.utils.BaseConverter
+import libetal.kotlinx.ksp.plugins.utils.Converter
 import libetal.kotlinx.ksp.plugins.utils.File
 import libetal.kotlinx.ksp.plugins.utils.TopLevelDeclaration
 
@@ -16,6 +19,7 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
             .filterIsInstance<KSClassDeclaration>()
 
         val extensionsConverters = mutableListOf<ExtensionConverter>()
+        val tableDeclarations = mutableListOf<KClassDeclaration>()
 
         val dependencies = Dependencies(true, *resolver.getAllFiles().toList().toTypedArray())
 
@@ -42,6 +46,7 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
                 ).write()
 
                 fqName?.let { fullyQualifiedName ->
+                    DatabaseCreatorsConverter.declarations += this
                     processed[fullyQualifiedName] = this
                 }
 
@@ -56,16 +61,19 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
             }
         }.write()
 
+        File("reboTablesInit", codeGenerator, dependencies, "rebo.extensions").apply {
+
+                addConverter(DatabaseCreatorsConverter)
+        }.write()
+
         return emptyList()
     }
 
 
     companion object {
-        val processed = mutableMapOf<String, TopLevelDeclaration<*, *>>()
+        val processed = mutableMapOf<String, KClassDeclaration>()
 
         fun getDeclaration(fqName: String) = processed[fqName]
     }
 
 }
-
-

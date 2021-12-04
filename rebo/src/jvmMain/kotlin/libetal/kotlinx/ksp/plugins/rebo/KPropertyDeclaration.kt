@@ -45,7 +45,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
 
 
     private val isPrimitive by lazy {
-        qualifiedReturnType in primitiveInitializers
+        fqReturnType in primitiveInitializers
     }
 
     var defaultValue by mutableLazy {
@@ -58,7 +58,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
 
     private val size by columnAnnotationArguments {
         it as? Int ?: run {
-            when (qualifiedReturnType) {
+            when (fqReturnType) {
                 "kotlinx.String" -> 255
                 else -> 0
             }
@@ -155,16 +155,22 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
         resolvedType.declaration.qualifiedName?.asString()
     }
 
-    val qualifiedReturnType by lazy {
+    val fqReturnType by lazy {
         checkNotNull(resolvedTypeDeclarationQualifiedName) {
             "Can't resolve return type of property ${qualifiedName?.asString()}"
         }
     }
 
+    @Deprecated("Naming convention changed", ReplaceWith("fqReturnType"))
+    val qualifiedReturnType by lazy {
+        fqReturnType
+    }
+
+
     val immediateReferenced by lazy {
         if (isPrimitive)
             null
-        else EntityProcessor.getDeclaration(qualifiedReturnType) as? KClassDeclaration
+        else EntityProcessor.getDeclaration(fqReturnType) as? KClassDeclaration
             ?: KClassDeclaration(resolvedType.declaration as KSClassDeclaration)
     }
 

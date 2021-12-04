@@ -13,10 +13,9 @@ class File(
     private val extensionName: String = "kt",
 ) {
 
+    private val converters = mutableListOf<BaseConverter>()
 
-    private val converters = mutableListOf<Converter<*, *>>()
-
-    fun <K : KSDeclaration, D : TopLevelDeclaration<K, D>, C : Converter<K, D>> addConverter(converter: C): File {
+    fun  addConverter(converter: BaseConverter): File {
         converters += converter
         return this
     }

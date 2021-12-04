@@ -21,7 +21,7 @@ fun KSAnnotated.useFirst(vararg consumers: Pair<String, (KSAnnotation) -> Unit>)
 operator fun List<KSValueParameter>.get(kPropertyDeclaration: KPropertyDeclaration): KSValueParameter? =
     firstOrNull { ksValueParameter ->
         ksValueParameter.name?.asString() == kPropertyDeclaration.propertyName
-                && ksValueParameter.type.resolve().declaration.qualifiedName?.asString() == kPropertyDeclaration.qualifiedReturnType
+                && ksValueParameter.type.resolve().declaration.qualifiedName?.asString() == kPropertyDeclaration.fqReturnType
     }
 
 operator fun Sequence<KSAnnotation>.get(annotationName: String) =

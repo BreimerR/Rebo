@@ -11,3 +11,5 @@ annotation class ForeignKey(
     val onUpdate: ReferenceOption = ReferenceOption.NO_ACTION,
     val safeInsert: Boolean = false
 )
+
+

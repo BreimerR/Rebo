@@ -8,6 +8,7 @@ import com.libetal.lazy.mutable.mutableLazy
 import kotlinx.languages.english.plural
 import kotlinx.strings.camelSnakeSplit
 import libetal.kotlinx.ksp.plugins.utils.*
+import libetal.rebo.annotations.exposed.entities.NoUpdateProperties
 
 
 class KClassDeclaration(
@@ -105,6 +106,10 @@ class KClassDeclaration(
 
     private val KSDeclaration.columnAnnotation
         get() = getAnnotation(Annotations.Column)
+
+    val noUpdatePropertiesAnnotation by lazy {
+        getAnnotation(Annotations.NoUpdateProperties)
+    }
 
     var primaryColumn by mutableLazy {
         columns.firstOrNull { it.isPrimary }
