@@ -17,8 +17,8 @@ Have a CrossPlatform database
 
 ## Options
 
-[Kodein-DB](https://github.com/Kodein-Framework)
-[Exposed](https://github.com/JetBrains/Exposed) Currently Supported
+1. [Kodein-DB](https://github.com/Kodein-Framework) (Future)
+2. [Exposed](https://github.com/JetBrains/Exposed) Currently Supported
 
 ## Dependencies
 
