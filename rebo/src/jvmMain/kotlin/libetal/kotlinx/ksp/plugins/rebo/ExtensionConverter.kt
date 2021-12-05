@@ -37,11 +37,11 @@ class ExtensionConverter(override val declaration: KClassDeclaration) : Converte
     private val deleteMethod by lazy {
         with(declaration) {
             """|
-            |fun $fqName.delete() {
+            |fun $fqName.delete(): Boolean {
             |${indent}val $entityClassSimpleNameAsArgName = $daoFqName.first($contextColumnsAsArguments
             |$indent)
             |
-            |$indent$entityClassSimpleNameAsArgName?.delete() != null
+            |${indent}return $entityClassSimpleNameAsArgName?.delete() != null
             |}
         """.trimMargin()
         }
@@ -53,7 +53,8 @@ class ExtensionConverter(override val declaration: KClassDeclaration) : Converte
     private val createMethod by lazy {
         with(declaration) {
             """|
-            |fun $fqName.create(): $fqName = $daoFqName.insert(this@create)""".trimMargin()
+            |fun $fqName.create(): $fqName = 
+            |$indent$daoFqName.insert(this@create)""".trimMargin()
         }
     }
 
@@ -104,7 +105,6 @@ class ExtensionConverter(override val declaration: KClassDeclaration) : Converte
             }
         }
     }
-
 
     override fun convert(): String = """|$existsProperty
         |$createMethod

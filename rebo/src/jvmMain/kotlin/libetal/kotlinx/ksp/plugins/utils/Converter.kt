@@ -6,7 +6,5 @@ abstract class Converter<T : KSDeclaration, D : TopLevelDeclaration<T, D>> : Bas
 
     abstract val declaration: D
 
-    fun addImport(import: String) = imports.add(import)
-
 }
 

@@ -5,9 +5,6 @@ import com.google.devtools.ksp.processing.Resolver
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
-import libetal.kotlinx.ksp.plugins.rebo.visitors.DatabaseCreatorsConverter
-import libetal.kotlinx.ksp.plugins.utils.BaseConverter
-import libetal.kotlinx.ksp.plugins.utils.Converter
 import libetal.kotlinx.ksp.plugins.utils.File
 import libetal.kotlinx.ksp.plugins.utils.TopLevelDeclaration
 
@@ -17,9 +14,6 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
 
         val unProcessedEntities = resolver.getSymbolsWithAnnotation(Annotations.Entity)
             .filterIsInstance<KSClassDeclaration>()
-
-        val extensionsConverters = mutableListOf<ExtensionConverter>()
-        val tableDeclarations = mutableListOf<KClassDeclaration>()
 
         val dependencies = Dependencies(true, *resolver.getAllFiles().toList().toTypedArray())
 
@@ -39,37 +33,32 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
 
                 if (hasPrimaryKey) {
 
-                    /**
-                     * This is here to help columns know their parent tables easily
-                     * If all fails either way this won't be a problem
-                     * */
-                    processed += this
-
                     File(
                         tableClassName,
                         codeGenerator,
                         dependencies,
                         generatedPackageName
-                    ).addConverter(
-                        TableConverter(this)
-                    ).write()
+                    )
+                        .addConverter(TableConverter(this))
+                        .write()
+
+                    File(
+                        simpleName.asString(),
+                        codeGenerator,
+                        dependencies,
+                        "$generatedPackageName.rebo.extensions"
+                    )
+                        .addConverter(ExtensionConverter(this))
+                        .write()
+
+                    processed += this
                 }
 
-
-
-                extensionsConverters += ExtensionConverter(this)
             }
 
         }
 
-        File("extensions", codeGenerator, dependencies, "rebo.extensions").apply {
-            extensionsConverters.forEach {
-                addConverter(it)
-            }
-        }.write()
-
         File("reboTablesInit", codeGenerator, dependencies, "rebo.extensions").apply {
-
             addConverter(DatabaseCreatorsConverter)
         }.write()
 

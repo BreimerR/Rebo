@@ -15,7 +15,7 @@ class File(
 
     private val converters = mutableListOf<BaseConverter>()
 
-    fun  addConverter(converter: BaseConverter): File {
+    fun addConverter(converter: BaseConverter): File {
         converters += converter
         return this
     }
@@ -36,9 +36,13 @@ class File(
                 writer.write("package $packageName\n\n")
                 var imports = ""
                 var secondLevel = ""
+
                 converters.forEach { converter ->
-                    secondLevel += "\n\n" + converter.convert()
-                    imports += converter.imports.joinToString("\n") { "import $it" }
+                    secondLevel += "\n" + converter.convert()
+                    imports += converter.imports.joinToString("") {
+                        """|
+                        |import $it""".trimMargin()
+                    }
                 }
 
                 writer.write(imports)

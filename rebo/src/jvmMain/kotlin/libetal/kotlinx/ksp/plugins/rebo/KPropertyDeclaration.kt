@@ -11,10 +11,11 @@ import libetal.kotlinx.ksp.plugins.rebo.Annotations.Column
 import libetal.kotlinx.ksp.plugins.rebo.Annotations.ForeignKey
 import libetal.kotlinx.ksp.plugins.rebo.Annotations.PrimaryKey
 import libetal.kotlinx.ksp.plugins.utils.*
+import libetal.rebo.annotations.exposed.columns.Column
 import libetal.rebo.annotations.exposed.enums.ReferenceOption
 
 
-class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KClassDeclaration) :
+class KPropertyDeclaration(delegate: KSPropertyDeclaration, private val entityClass: KClassDeclaration) :
     PropertyDeclaration<KPropertyDeclaration, KPropertyDeclaration>(delegate) {
 
     private var columnAnnotation: KSAnnotation by mutableLazy {
@@ -46,14 +47,6 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
 
     private val isPrimitive by lazy {
         fqReturnType in primitiveInitializers
-    }
-
-    var defaultValue by mutableLazy {
-        val default by columnAnnotationArguments {
-            it?.toString()?.ifBlank { null } ?: ""
-        }
-
-        default
     }
 
     private val size by columnAnnotationArguments {
@@ -143,10 +136,6 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
     private val isAutoIncrement by columnAnnotationArguments {
         val autoIncrement = it as? Boolean ?: isPrimary
 
-/*        check(autoIncrement && (qualifiedReturnType == "Int" || qualifiedReturnType == "kotlin.Int")) {
-            "Can't have non Integer value of($qualifiedReturnType) as autoincrement"
-        }*/
-
         autoIncrement
 
     }
@@ -174,14 +163,12 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
             ?: KClassDeclaration(resolvedType.declaration as KSClassDeclaration)
     }
 
-    val immediateReferencedProperty by lazy {
-        if (isForeign)
-            immediateReferenced?.columns?.firstOrNull {
-                referencedFiledName?.let { referencedPropertyName ->
-                    it.propertyName == referencedPropertyName
-                } ?: it.isPrimary
-            }
-        else null
+    private val immediateReferencedProperty by lazy {
+        immediateReferenced?.columns?.firstOrNull {
+            referencedFiledName?.let { referencedPropertyName ->
+                it.propertyName == referencedPropertyName
+            } ?: it.isPrimary
+        }
     }
 
     val pkgName by lazy {
@@ -216,10 +203,6 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
     }
 
 
-    private val returnTypeSimpleName by lazy {
-        fqReturnType.split('.').last()
-    }
-
     var isForeign by mutableLazy {
         foreignAnnotation?.let {
             true
@@ -240,17 +223,21 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
         daoClass?.daoFqName
     }
 
-    val primitiveTypeSimpleString by lazy {
-        if (isPrimitive)
-            returnTypeSimpleName
-        else {
-            referencedClass?.let { _ ->
+    val primitiveTypeFqName: String by lazy {
+        val result = if (isForeign)
+            immediateReferencedProperty?.primitiveTypeFqName
+        else fqReturnType
 
-            }
+        result ?: throw RuntimeException("Can't resolve the primitiveReturn Type of the property $fqName")
+    }
 
+    var defaultValue: String? by mutableLazy {
+
+        val default = (columnAnnotation.arguments["default"]?.value?.toString())?.ifBlank { null } ?: run {
+            immediateReferencedProperty?.defaultValue
         }
 
-        "kotlin.Int"
+        default.defaultValue(primitiveTypeFqName)
     }
 
     /**
@@ -273,21 +260,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
     }
 
     val entityKeyTypeString by lazy {
-        "EntityID<$primitiveTypeSimpleString>"
-    }
-
-    private fun getAnnotation(annotationQualifiedName: String): KSAnnotation? {
-        var results: KSAnnotation? = null
-        annotations.forEach {
-            val qualifiedName = it.annotationType.resolve().declaration.qualifiedName?.asString()
-
-
-            if (annotationQualifiedName == qualifiedName)
-                results = it
-
-        }
-
-        return results
+        "EntityID<$primitiveTypeFqName>"
     }
 
     private val tableOverride by lazy {
@@ -299,7 +272,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
 
     private val rightHandExpressionMethod by lazy {
         val methodName = if (isPrimary)
-            checkNotNull(primitiveInitializers[primitiveTypeSimpleString]) {
+            checkNotNull(primitiveInitializers[primitiveTypeFqName]) {
                 Logger.error("Can't resolve initializer expression for column $")
             }
         else if (isForeign)
@@ -369,9 +342,9 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
 
     private val columnExplicitTypeParameter by lazy {
         if (isForeign) {
-            primitiveTypeSimpleString
+            primitiveTypeFqName
         } else {
-            qualifiedReturnType
+            fqReturnType
         }
     }
 
@@ -401,7 +374,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
         result
     }
 
-    val tableFqName by lazy {
+    private val tableFqName by lazy {
         entityClass.tableFqName
     }
 
@@ -415,11 +388,37 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KCl
 
     }
 
-    val tableEqQuery by lazy {
-        val result = """$tableFqName.$propertyName eq $primitivePath"""
-
-        """($result)"""
+    private val primitivePathHasNullable by lazy {
+        "?" in primitivePath
     }
+
+    val tableEqQuery by lazy {
+        val result = """$tableFqName.$propertyName eq"""
+
+        val rightHand = if (primitivePathHasNullable) {
+            defaultValue?.let {
+                "($primitivePath ?: $it)"
+            }
+                ?: throw RuntimeException("""Can't resolve default value for a nullable reference $primitivePath of Property($fqName). Provide default value ${Annotations.Column}(default = "..." )""")
+        } else primitivePath
+
+
+        """($result $rightHand)"""
+    }
+
+
+    private fun String?.defaultValue(primitiveTypeFqName: String): String? = when (primitiveTypeFqName) {
+        "String", "kotlin.String" -> this?.ifBlank { null }?.let { """"$it"""" }
+        "Int", "kotlin.Int" -> this?.ifBlank { null }?.toInt()
+        "UInt", "kotlin.UInt" -> this?.ifBlank { null }?.toUInt()
+        "Long", "kotlin.Long" -> this?.ifBlank { null }?.toLong()
+        "Float", "kotlin.Float" -> this?.ifBlank { null }?.toFloat()
+        "Double", "kotlin.Double" -> this?.ifBlank { null }?.toDouble()
+        "Boolean", "kotlin.Boolean" -> this?.ifBlank { "false" }.toBoolean()
+        "Short", "kotlin.Short" -> this?.toShort()
+        "Byte", "kotlin.Byte" -> this?.toByte()
+        else -> throw RuntimeException("Unsupported primitive type $primitiveTypeFqName")
+    }?.toString()
 
     fun tablePropertyString(indent: String = ""): String {
 

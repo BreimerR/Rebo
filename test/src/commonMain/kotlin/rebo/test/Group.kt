@@ -13,7 +13,7 @@ data class Group(
     val id: Int = 0,
     @Column
     val name: String,
-    @Column
+    @Column(default = "0")
     @ForeignKey(onDelete = ReferenceOption.CASCADE)
     val parent: Group? = null
 

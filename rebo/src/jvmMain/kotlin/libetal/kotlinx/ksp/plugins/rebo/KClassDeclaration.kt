@@ -6,7 +6,6 @@ import com.libetal.lazy.mutable.mutableLazy
 import kotlinx.languages.english.plural
 import kotlinx.strings.camelSnakeSplit
 import libetal.kotlinx.ksp.plugins.utils.*
-import libetal.rebo.annotations.exposed.entities.NoUpdateProperties
 
 
 class KClassDeclaration(
@@ -50,7 +49,7 @@ class KClassDeclaration(
     }
 
     val tableClassName by lazy {
-        "${name}Table"
+        "${name.camelSnakeSplit.joinToString("") { it.plural }}Table"
     }
 
     // TODO add Support for this
@@ -62,12 +61,12 @@ class KClassDeclaration(
         name.camelSnakeSplit
     }
 
-    private val nameSnakeCase by lazy {
-        nameSplat.joinToString("_")
+    private val tableNameSnakeCase by lazy {
+        nameSplat.joinToString("_") { it.plural }
     }
 
     val tableName by lazy {
-        "${nameSnakeCase.lowercase()}_${if (isView) "view" else "table"}"
+        "${tableNameSnakeCase}_${if (isView) "view" else "table"}"
     }
 
     private val tableClassPackageName by lazy {
@@ -142,7 +141,7 @@ class KClassDeclaration(
     }
 
     val primaryKeyTypeString by lazy {
-        primaryColumn?.primitiveTypeSimpleString
+        primaryColumn?.primitiveTypeFqName
     }
 
     val primaryEntityKeyTypeString by lazy {

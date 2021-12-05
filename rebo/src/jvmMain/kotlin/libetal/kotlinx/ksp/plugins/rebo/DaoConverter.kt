@@ -12,7 +12,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
     private var indent = ""
 
     private val tableQualifiedName by lazy {
-        declaration.tableQualifiedName
+        declaration.tableFqName
     }
     private val daoName by lazy {
         declaration.daoName
@@ -34,10 +34,10 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
 
                     daoClass?.let { daoClass ->
                         "${daoClass.daoFqName} $function $tableQualifiedName.$propertyName"
-                    } ?: throw RuntimeException("Can't find daoClass for $fqName : $qualifiedReturnType")
+                    } ?: throw RuntimeException("Can't find daoClass for $fqName : $fqReturnType")
                 }
 
-                var variableType = if (isForeign) {
+                val variableType = if (isForeign) {
                     var result = ": $daoFqName"
                     if (isNullable) result += "?"
                     result
@@ -76,7 +76,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
     }
 
     private val primaryColumnPrimitiveType by lazy {
-        primaryColumn?.primitiveTypeSimpleString
+        primaryColumn?.primitiveTypeFqName
     }
 
     private val argName by lazy {
@@ -105,9 +105,10 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
                             val rightHandExpression = if (isForeign) {
                                 var result = propertyName
 
-                                result += if (isNullable) "?"
-                                else ""
-                                "$result.invoke()"
+                                if (isNullable)
+                                    result += "?"
+
+                                "this@$daoName.$result.invoke()"
                             } else {
                                 if (isPrimary) {
                                     "this@$daoName.$propertyName.value"
@@ -174,18 +175,25 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
         val code = declaration.columns.map {
             with(it) {
                 if (isForeign) {
-                    if (isNullable) """|
-                           |$indent    $argName.$propertyName?.let {
-                           |$indent        $propertyName = $daoFqName.${if (safeInsert) "firstOrNew" else "new"}(it)
+                    if (isNullable) {
+                        val nullableName = "$argName${propertyName.ucFirst}"
+                        """|
+                           |$indent    $argName.$propertyName?.let { $nullableName ->
+                           |$indent        $propertyName = $daoFqName.${if (safeInsert) "firstOrNew" else "new"}($nullableName)
                            |$indent    }
                         """.trimMargin()
-                    else """|
+                    } else """|
                             |$indent    $propertyName = $daoFqName.${if (safeInsert) "firstOrNew" else "new"}($argName.$propertyName)
                         """.trimMargin()
                 } else {
                     if (!isPrimary) {
                         if (isNullable) {
-                            """TODO("Contribute to Rebo source. Feature not supported DaoConverter[185]")"""
+                            val nullableName = "$argName${propertyName.ucFirst}"
+                            """|
+                                |$indent    $argName.$propertyName?.let { $nullableName ->
+                                |$indent        $propertyName = $nullableName
+                                |$indent    }
+                            """.trimMargin()
                         } else {
                             """|
                            |$indent    $propertyName = $argName.$propertyName
@@ -246,6 +254,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
         }
 
         val uniqueReferencedCode = pairUniques.map { (referee, reference) ->
+            addImport("org.jetbrains.exposed.sql.and")
             """(${referee.tableEqQuery} and ${reference.tableEqQuery})"""
         }
 
@@ -264,9 +273,9 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
 
     }
 
-    private fun KClassDeclaration.columnsAsStringValueConcat(vararg path: String = arrayOf(argName)): String =
+    private fun KClassDeclaration.columnsAsStringValueConcat(): String =
         columns.joinToString(", ") {
-          "$fqName($" + "{$argName.${it.primitivePath}})"
+            "$fqName($" + "{$argName.${it.primitivePath}})"
         }
 
     private val columnsAsArguments by lazy {
@@ -275,29 +284,31 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
         }
     }
 
-    private fun KPropertyDeclaration.updateByPrimaryKeyString(primaryColumnName: String?): String {
+    private fun KPropertyDeclaration.updateByPrimaryKeyString(): String {
         val spacing = "$indent            "
         val nullableName = "$argName${propertyName.ucFirst}"
-        val argumentName = "$argName.$propertyName"
+        val argumentName = propertyName
 
         val result = if (isPrimary && propertyName == "id")
             """|
                 |$spacing// Property $propertyName is primary and can't be set 
-                |$spacing// $propertyName  = $argumentName
+                |$spacing// $propertyName  = "$argName.$argumentName"
             """.trimMargin()
         else if (isForeign) {
             if (isNullable) {
                 """|
-                    |$spacing$argumentName?.let { $nullableName ->
-                    |$spacing    $propertyName = $daoFqName.update($nullableName.$primaryColumnName, $nullableName)
+                    |$spacing$argName.$propertyName?.let { $nullableName ->
+                    |$spacing    this.$propertyName = $daoFqName.update($nullableName.${
+                    primitivePath.split(".").last()
+                }, $nullableName)
                     |$spacing}
                 """.trimMargin()
             } else """|
-                    |$spacing$propertyName = $daoFqName.update($argumentName.$primaryColumnName, $argumentName)
+                    |${spacing}this.$propertyName = $daoFqName.update($argName.$primitivePath, $argName.$argumentName)
                 """.trimMargin()
         } else {
             """|
-               |$spacing$propertyName = $argumentName""".trimMargin()
+               |${spacing}this.$propertyName = $argumentName""".trimMargin()
 
         }
 
@@ -338,7 +349,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
 
     private val KClassDeclaration.updateByPrimaryKeyTransactionBody
         get(): String = columns.joinToString("") {
-            it.updateByPrimaryKeyString(primaryColumn?.primaryKeyPrimitivePath)
+            it.updateByPrimaryKeyString()
         }
 
     private val KClassDeclaration.updateMethodTransactionBody
@@ -364,9 +375,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
            |$indent            find($argName)?.apply {${declaration.updateMethodTransactionBody}
            |$indent            }
            |$indent                ?: throw java.sql.BatchUpdateException(Exception("Passed $argName: $fqName doesn't exist on database with values ${
-            declaration.columnsAsStringValueConcat(
-                argName
-            )
+            declaration.columnsAsStringValueConcat()
         }"))
            |$indent        }
         """.trimMargin()
@@ -384,7 +393,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
     private val updateByIdMethod by lazy {
         val primaryKeyName = primaryColumn?.propertyName
         val primaryKeyFqName = primaryColumn?.fqName
-        val primaryColumnType = primaryColumn?.qualifiedReturnType
+        val primaryColumnType = primaryColumn?.fqReturnType
         val fqConcatProperty = "{$argName.${primaryColumn?.primaryKeyPrimitivePath}}"
         """|
             |$indent    fun update($primaryKeyName: ${primaryColumnType}, $argName: $fqName): $daoFqName = transaction {
@@ -524,7 +533,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
             |$daoColumns
             |$invokeMethod
             |
-            |${indent}companion object : EntityClass<Int, $daoName>($tableQualifiedName) {
+            |${indent}companion object : EntityClass<Int, $daoName>($tableFqName) {
             |$indent$allProperty
             |$containsMethod
             |$findByIdMethod
