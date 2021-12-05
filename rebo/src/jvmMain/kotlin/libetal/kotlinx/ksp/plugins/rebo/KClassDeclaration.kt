@@ -1,9 +1,7 @@
 package libetal.kotlinx.ksp.plugins.rebo
 
-import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.google.devtools.ksp.symbol.KSDeclaration
-import com.google.devtools.ksp.symbol.KSName
-import com.google.devtools.ksp.symbol.KSPropertyDeclaration
+import com.google.devtools.ksp.getConstructors
+import com.google.devtools.ksp.symbol.*
 import com.libetal.lazy.mutable.mutableLazy
 import kotlinx.languages.english.plural
 import kotlinx.strings.camelSnakeSplit
@@ -28,11 +26,6 @@ class KClassDeclaration(
             "${stringPackageName}.generated"
         else stringPackageName
     }
-
-
-    private val isProcessed
-        get() = qualifiedName?.asString() in EntityProcessor.processed
-
 
     private val name: String by lazy {
         simpleName.asString()
@@ -81,20 +74,53 @@ class KClassDeclaration(
         generatedPackageName
     }
 
-    val tableQualifiedName by lazy {
+    val tableFqName by lazy {
         "$tableClassPackageName.$tableClassName"
     }
 
+    @Deprecated("Naming Moving to something unified", ReplaceWith("tableFqName"))
+    val tableQualifiedName by lazy {
+        tableFqName
+    }
 
     var columns by mutableLazy {
         val columns = mutableListOf<KPropertyDeclaration>()
         declarations.forEach {
             if (it.isColumn)
                 if (it is KSPropertyDeclaration)
-                    columns += KPropertyDeclaration(it) else Logger.error("Somehow property${qualifiedName?.asString()} is annotated with @${Annotations.Column}")
+                    columns += KPropertyDeclaration(it, this)
+                else Logger.error("Somehow property${qualifiedName?.asString()} is annotated with @${Annotations.Column}")
         }
 
         columns.toList()
+    }
+
+
+    val hasMatchingConstructor by lazy {
+
+        var boolean = false
+
+        val columns = columns.filter {
+            with(it) {
+                inConstructor
+            }
+        }
+
+        for (constructor in getConstructors()) {
+            if (constructor.parameters.size == columns.size) {
+                var test = true
+                for (column in columns) {
+                    test =
+                        test && (constructor.parameters.firstOrNull { it.name?.asString() == column.simpleName.asString() } != null)
+                    if (!test) break
+                }
+
+                boolean = test
+            }
+        }
+
+        boolean
+
     }
 
     val hasPrimaryKey by lazy {

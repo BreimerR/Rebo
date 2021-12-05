@@ -25,7 +25,8 @@ public fun Application.reboTablesInit(): Unit {
 
 object DatabaseCreatorsConverter : BaseConverter() {
 
-    val declarations = mutableListOf<KClassDeclaration>()
+    private val declarations
+        get() = EntityProcessor.processed.filterIsInstance<KClassDeclaration>()
 
     private val tableInitializers by lazy {
         declarations.joinToString("") {

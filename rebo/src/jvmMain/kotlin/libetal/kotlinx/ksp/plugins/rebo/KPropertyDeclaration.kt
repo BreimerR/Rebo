@@ -14,7 +14,7 @@ import libetal.kotlinx.ksp.plugins.utils.*
 import libetal.rebo.annotations.exposed.enums.ReferenceOption
 
 
-class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
+class KPropertyDeclaration(delegate: KSPropertyDeclaration, val entityClass: KClassDeclaration) :
     PropertyDeclaration<KPropertyDeclaration, KPropertyDeclaration>(delegate) {
 
     private var columnAnnotation: KSAnnotation by mutableLazy {
@@ -174,6 +174,16 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
             ?: KClassDeclaration(resolvedType.declaration as KSClassDeclaration)
     }
 
+    val immediateReferencedProperty by lazy {
+        if (isForeign)
+            immediateReferenced?.columns?.firstOrNull {
+                referencedFiledName?.let { referencedPropertyName ->
+                    it.propertyName == referencedPropertyName
+                } ?: it.isPrimary
+            }
+        else null
+    }
+
     val pkgName by lazy {
         declaration.packageName.asString()
     }
@@ -207,7 +217,7 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
 
 
     private val returnTypeSimpleName by lazy {
-        qualifiedReturnType.split('.').last()
+        fqReturnType.split('.').last()
     }
 
     var isForeign by mutableLazy {
@@ -215,7 +225,6 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
             true
         } ?: !isPrimitive
     }
-
 
     val daoClass by lazy {
         if (isForeign) {
@@ -390,6 +399,26 @@ class KPropertyDeclaration(delegate: KSPropertyDeclaration) :
         result += ">"
 
         result
+    }
+
+    val tableFqName by lazy {
+        entityClass.tableFqName
+    }
+
+    val primitivePath: String by lazy {
+        var result = propertyName
+        if (isForeign) {
+            if (isNullable)
+                result += "?"
+            """$result.${immediateReferencedProperty?.primitivePath}"""
+        } else result
+
+    }
+
+    val tableEqQuery by lazy {
+        val result = """$tableFqName.$propertyName eq $primitivePath"""
+
+        """($result)"""
     }
 
     fun tablePropertyString(indent: String = ""): String {

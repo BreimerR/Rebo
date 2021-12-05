@@ -85,84 +85,88 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
 
     private val invokeMethod by lazy {
 
-        var code = """|
+        if (declaration.hasMatchingConstructor) {
+            var code = """|
             |${indent}operator fun invoke(): $fqName = transaction {""".trimMargin()
 
-        if (declaration.classKind == ClassKind.CLASS) {
-            val constructorStart = """|
+            if (declaration.classKind == ClassKind.CLASS) {
+                val constructorStart = """|
                 |$indent    $fqName(""".trimMargin()
 
-            code += constructorStart
+                code += constructorStart
 
-            val constructorCode = mutableListOf<String>()
-            val nonConstructorCode = mutableListOf<String>()
+                val constructorCode = mutableListOf<String>()
+                val nonConstructorCode = mutableListOf<String>()
 
-            with(declaration) {
-                columns.forEach { column ->
-                    val propName = column.columnName
-                    with(column) {
-                        val rightHandExpression = if (isForeign) {
-                            var result = propertyName
+                with(declaration) {
+                    columns.forEach { column ->
+                        val propName = column.columnName
+                        with(column) {
+                            val rightHandExpression = if (isForeign) {
+                                var result = propertyName
 
-                            result += if (isNullable) "?"
-                            else ""
-                            "$result.invoke()"
-                        } else {
-                            if (isPrimary) {
-                                "this@$daoName.$propertyName.value"
-                            } else """this@$daoName.${propName}"""
-                        }
+                                result += if (isNullable) "?"
+                                else ""
+                                "$result.invoke()"
+                            } else {
+                                if (isPrimary) {
+                                    "this@$daoName.$propertyName.value"
+                                } else """this@$daoName.${propName}"""
+                            }
 
-                        val savedIndent = indent
-                        indent += "    "
+                            val savedIndent = indent
+                            indent += "    "
 
-                        if (inConstructor) {
-                            constructorCode += """|// in constructor
+                            if (inConstructor) {
+                                constructorCode += """|// in constructor
                                 |$propertyName = $rightHandExpression""".trimMargin()
-                        } else {
-                            nonConstructorCode += """this.$propertyName = $rightHandExpression"""
-                        }
+                            } else {
+                                nonConstructorCode += """this.$propertyName = $rightHandExpression"""
+                            }
 
-                        indent = savedIndent
+                            indent = savedIndent
+                        }
                     }
                 }
-            }
 
-            code += if (constructorCode.isEmpty()) ")"
-            else {
-                val parameters = constructorCode.joinToString(
-                    """|,
+                code += if (constructorCode.isEmpty()) ")"
+                else {
+                    val parameters = constructorCode.joinToString(
+                        """|,
                        |$indent        
                     """.trimMargin()
-                )
-                """|
+                    )
+                    """|
                    |$indent        $parameters
                    |$indent    )""".trimMargin()
-            }
+                }
 
-            code += if (nonConstructorCode.isNotEmpty()) {
-                val savedIndent = indent
-                indent += "    "
-                val nonConstructorInitializers = nonConstructorCode.joinToString(
-                    """|
+                code += if (nonConstructorCode.isNotEmpty()) {
+                    val savedIndent = indent
+                    indent += "    "
+                    val nonConstructorInitializers = nonConstructorCode.joinToString(
+                        """|
                        |$indent    
                     """.trimMargin()
-                )
+                    )
 
-                val result = """|.apply{
+                    val result = """|.apply{
                    |$indent    $nonConstructorInitializers
                    |$indent}""".trimMargin()
 
-                indent = savedIndent
-                result
-            } else ""
+                    indent = savedIndent
+                    result
+                } else ""
 
-        }
+            }
 
-        code += """|
+            code += """|
             |$indent}""".trimMargin()
 
-        code
+            code
+
+        } else throw RuntimeException("Can't find a matching constructor in class ${declaration.fqName}")
+
 
     }
 
@@ -202,7 +206,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
 
     private val columnsAsParameters by lazy {
         columns.joinToString(", ") { column ->
-            """${column.propertyName}: ${column.qualifiedReturnType}${if (column.isNullable) "?" else ""}"""
+            """${column.propertyName}: ${column.fqReturnType}${if (column.isNullable) "?" else ""}"""
         }
     }
 
@@ -242,11 +246,11 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
         }
 
         val uniqueReferencedCode = pairUniques.map { (referee, reference) ->
-            """(($tableQualifiedName.${referee.propertyName} eq ${referee.propertyName}) and ($tableQualifiedName.${referee.propertyName} eq ${reference.propertyName}))"""
+            """(${referee.tableEqQuery} and ${reference.tableEqQuery})"""
         }
 
         val unReferencedCode = (if (unreferenced.isEmpty()) nonUniques else unreferenced).map { column ->
-            """($tableQualifiedName.${column.propertyName} eq ${column.primaryKeyPrimitivePath})"""
+            column.tableEqQuery
         }
 
         (uniqueReferencedCode + unReferencedCode).joinToString(
@@ -261,10 +265,8 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
     }
 
     private fun KClassDeclaration.columnsAsStringValueConcat(vararg path: String = arrayOf(argName)): String =
-        columns.filter { !(it.isForeign && fqName != null && fqName == it.immediateReferenced?.fqName) }.joinToString(", ") {
-            if (it.isForeign) {
-                it.immediateReferenced?.columnsAsStringValueConcat(argName, it.propertyName) ?: ""
-            } else "$fqName($" + "{${path.joinToString(".")}.${it.propertyName}})"
+        columns.joinToString(", ") {
+          "$fqName($" + "{$argName.${it.primitivePath}})"
         }
 
     private val columnsAsArguments by lazy {
@@ -287,7 +289,7 @@ class DaoConverter(override var declaration: KClassDeclaration) : Converter<KSCl
             if (isNullable) {
                 """|
                     |$spacing$argumentName?.let { $nullableName ->
-                    |$spacing    $propertyName = $daoFqName.update($argumentName.$primaryColumnName, $nullableName)
+                    |$spacing    $propertyName = $daoFqName.update($nullableName.$primaryColumnName, $nullableName)
                     |$spacing}
                 """.trimMargin()
             } else """|

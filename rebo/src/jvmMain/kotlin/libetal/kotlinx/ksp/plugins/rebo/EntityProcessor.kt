@@ -27,28 +27,35 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
             val fqName = ksClassDeclaration.qualifiedName?.asString()
 
             val kClassDeclaration =
-                fqName?.let { fullyQualifiedName -> processed[fullyQualifiedName] as? KClassDeclaration } ?: KClassDeclaration(
-                    ksClassDeclaration
-                )
+                fqName?.let { fullyQualifiedName -> getDeclaration(fullyQualifiedName) as? KClassDeclaration }
+                    ?: KClassDeclaration(
+                        ksClassDeclaration
+                    )
 
             with(kClassDeclaration) {
                 File(daoName, codeGenerator, dependencies, generatedPackageName).addConverter(
                     DaoConverter(this)
                 ).write()
 
-                if (hasPrimaryKey) File(
-                    tableClassName,
-                    codeGenerator,
-                    dependencies,
-                    generatedPackageName
-                ).addConverter(
-                    TableConverter(this)
-                ).write()
+                if (hasPrimaryKey) {
 
-                fqName?.let { fullyQualifiedName ->
-                    DatabaseCreatorsConverter.declarations += this
-                    processed[fullyQualifiedName] = this
+                    /**
+                     * This is here to help columns know their parent tables easily
+                     * If all fails either way this won't be a problem
+                     * */
+                    processed += this
+
+                    File(
+                        tableClassName,
+                        codeGenerator,
+                        dependencies,
+                        generatedPackageName
+                    ).addConverter(
+                        TableConverter(this)
+                    ).write()
                 }
+
+
 
                 extensionsConverters += ExtensionConverter(this)
             }
@@ -63,7 +70,7 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
 
         File("reboTablesInit", codeGenerator, dependencies, "rebo.extensions").apply {
 
-                addConverter(DatabaseCreatorsConverter)
+            addConverter(DatabaseCreatorsConverter)
         }.write()
 
         return emptyList()
@@ -71,9 +78,14 @@ class EntityProcessor(environment: SymbolProcessorEnvironment) : libetal.kotlinx
 
 
     companion object {
-        val processed = mutableMapOf<String, KClassDeclaration>()
+        val processed = mutableListOf<TopLevelDeclaration<*, *>>()
 
-        fun getDeclaration(fqName: String) = processed[fqName]
+        fun getDeclaration(fqName: String) = processed.firstOrNull {
+            when (it) {
+                is KClassDeclaration -> it.fqName == fqName
+                else -> false
+            }
+        }
     }
 
 }
